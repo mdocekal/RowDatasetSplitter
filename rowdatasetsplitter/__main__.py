@@ -44,7 +44,8 @@ class ArgumentsManager(object):
         """
 
         parser = ExceptionsArgumentParser(
-            description="Small script for splitting row datasets into train, validation and test sets.")
+            description="Small script for splitting row datasets into train, validation and test sets. "
+                        "The split itself is random, but keep in mind that this not changes the order of samples.")
 
         parser.add_argument("-d", "--data",
                             help="Dataset that should be splitted.", type=str,
