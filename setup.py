@@ -2,8 +2,7 @@
 # -*- coding: UTF-8 -*-
 """"
 Created on 07.10.19
-KeywordsExtractor
-Extraction of keywords from a text.
+Small script for splitting row datasets into train, validation and test sets.
 
 :author:     Martin Dočekal
 """
