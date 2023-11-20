@@ -40,7 +40,7 @@ class ArgumentsManager(object):
     """
 
     @classmethod
-    def parseArgs(cls):
+    def parse_args(cls):
         """
         Performs arguments parsing.
 
