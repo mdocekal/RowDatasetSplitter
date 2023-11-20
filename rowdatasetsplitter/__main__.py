@@ -333,7 +333,7 @@ def chunking(data: str, out_dir: str, size: int = None, number_of_chunks: int = 
         logging.info("Counting lines in dataset.")
         lines_in_dataset = 0
         if index is not None:
-            with open(index) as f, tqdm(total=os.path.getsize(index)) as pbar:
+            with open(index, "rb") as f, tqdm(total=os.path.getsize(index)) as pbar:
                 while f.readline():
                     lines_in_dataset += 1
                     pbar.update(f.tell() - pbar.n)
@@ -342,7 +342,7 @@ def chunking(data: str, out_dir: str, size: int = None, number_of_chunks: int = 
                 lines_in_dataset -= 1  # header
 
         else:
-            with open(data) as f, tqdm(total=os.path.getsize(data)) as pbar:
+            with open(data, "rb") as f, tqdm(total=os.path.getsize(data)) as pbar:
                 while f.readline():
                     lines_in_dataset += 1
                     pbar.update(f.tell() - pbar.n)
