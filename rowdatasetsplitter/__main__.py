@@ -14,6 +14,7 @@ import os
 import random
 import sys
 import time
+from tqdm import tqdm
 from argparse import ArgumentParser
 from pathlib import Path
 
@@ -332,17 +333,19 @@ def chunking(data: str, out_dir: str, size: int = None, number_of_chunks: int = 
         logging.info("Counting lines in dataset.")
         lines_in_dataset = 0
         if index is not None:
-            with open(index) as f:
-                for _ in f:
+            with open(index) as f, tqdm(total=os.path.getsize(index)) as pbar:
+                while f.readline():
                     lines_in_dataset += 1
+                    pbar.update(f.tell() - pbar.n)
 
             if index.endswith(".csv"):
                 lines_in_dataset -= 1  # header
 
         else:
-            with open(data) as f:
-                for _ in f:
+            with open(data) as f, tqdm(total=os.path.getsize(data)) as pbar:
+                while f.readline():
                     lines_in_dataset += 1
+                    pbar.update(f.tell() - pbar.n)
 
         lines_per_chunk = math.ceil(lines_in_dataset / number_of_chunks)
 
@@ -418,7 +421,7 @@ def subset(data: str, out: str, from_line: int, to_line: int, index: str = None,
 
             f_dataset.seek(from_offset)
         else:
-            for _ in range(from_line):
+            for _ in tqdm(range(from_line), desc="Skipping to the first line"):
                 f_dataset.readline()
 
         # now we can start writing
