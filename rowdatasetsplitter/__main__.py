@@ -8,6 +8,7 @@ Small script for splitting row datasets into train, validation and test sets.
 """
 import argparse
 import csv
+import json
 import logging
 import math
 import os
@@ -17,6 +18,8 @@ import time
 from tqdm import tqdm
 from argparse import ArgumentParser
 from pathlib import Path
+
+from rowdatasetsplitter.file_reader import FileReader
 
 
 class ArgumentParserError(Exception):
@@ -86,8 +89,40 @@ class ArgumentsManager(object):
                                action='store_true')
         ml_splits.add_argument("--fixedSeed",
                                help="Fixes random seed. Useful when you want same splits.", action='store_true')
-
         ml_splits.set_defaults(func=call_make_ml_splits)
+
+        selective_ml_splits = subparsers.add_parser("selective_ml_splits",
+                                                    help="Splitting row datasets into train, validation and test sets. According to given set of ids.")
+        selective_ml_splits.add_argument("-d", "--data",
+                                         help="Dataset that should be split. It must be .csv,.tsv, or .jsonl.",
+                                         type=str,
+                                         required=True)
+        selective_ml_splits.add_argument("--out_train",
+                                         help="Path where the train subset will be saved.", type=str,
+                                         required=True)
+        selective_ml_splits.add_argument("--out_validation",
+                                         help="Path where the validation subset will be saved.", type=str,
+                                         required=True)
+        selective_ml_splits.add_argument("--out_test",
+                                         help="Path where the test subset will be saved.", type=str,
+                                         required=True)
+        selective_ml_splits.add_argument("-v", "--validation",
+                                         help="Path to file with ids of samples that should be in validation set. It must be .csv,.tsv, or .jsonl.",
+                                         type=float,
+                                         required=True)
+        selective_ml_splits.add_argument("-s", "--test",
+                                         help="Path to file with ids of samples that should be in test set. It must be .csv,.tsv, or .jsonl.",
+                                         type=float,
+                                         required=True)
+        selective_ml_splits.add_argument("-k", "--key",
+                                         help="Name of field that contains sample id in files containing ids that should be selected.",
+                                         type=str,
+                                         required=True)
+        selective_ml_splits.add_argument("--data_key",
+                                         help="Name of field that contains sample id in the original dataset.",
+                                         type=str,
+                                         required=True)
+        selective_ml_splits.set_defaults(func=call_make_selective_ml_splits)
 
         chunking = subparsers.add_parser("chunking", help="Splitting row datasets into chunks.")
         chunking.add_argument("-d", "--data",
@@ -108,39 +143,39 @@ class ArgumentsManager(object):
                               default="{orig_basename}_{counter}{orig_ext}")
         chunking.add_argument("-i", "--index",
                               help="Path to file with line file offsets. It can speed up the process. "
-                                   "Must be a file with offsets on separate lines or a csv file. It is expected that the headline is presented.",
+                                   "Must be a file with offsets on separate lines or a csv/tsv file. It is expected that the headline is presented.",
                               type=str,
                               required=False)
         chunking.set_defaults(func=call_chunking)
 
-        subset = subparsers.add_parser("subset", help="Creates subset of given dataset.")
-        subset.add_argument("-d", "--data",
-                            help="Dataset that should be used for subset.", type=str,
-                            required=True)
-        subset.add_argument("--out",
-                            help="Path where the subset will be saved.", type=str,
-                            required=True)
-        subset.add_argument("-f", "--from_line",
-                            help="Index of first line that should be in subset. First is 0.", type=int,
-                            required=True)
-        subset.add_argument("-t", "--to_line",
-                            help="Index of last line that should be in subset. Last is not included.", type=int,
-                            required=True)
-        subset.add_argument("-i", "--index",
-                            help="Path to file with line file offsets. It can speed up the process. "
-                                 "Must be a file with offsets on separate lines or a csv file. In case of csv file do not forget to setup index_offset_field. It is expected that the headline is presented.",
-                            type=str,
-                            required=False)
-        subset.add_argument("--index_offset_field",
-                            help="Name of field in index file that contains line offsets.", type=str,
-                            default="file_line_offset",
-                            required=False)
-        subset.set_defaults(func=call_subset)
+        subset_parser = subparsers.add_parser("subset", help="Creates subset of given dataset.")
+        subset_parser.add_argument("-d", "--data",
+                                   help="Dataset that should be used for subset.", type=str,
+                                   required=True)
+        subset_parser.add_argument("--out",
+                                   help="Path where the subset will be saved.", type=str,
+                                   required=True)
+        subset_parser.add_argument("-f", "--from_line",
+                                   help="Index of first line that should be in subset. First is 0.", type=int,
+                                   required=True)
+        subset_parser.add_argument("-t", "--to_line",
+                                   help="Index of last line that should be in subset. Last is not included.", type=int,
+                                   required=True)
+        subset_parser.add_argument("-i", "--index",
+                                   help="Path to file with line file offsets. It can speed up the process. "
+                                        "Must be a file with offsets on separate lines or a csv/tsv file. In case of csv/tsv file do not forget to setup index_offset_field. It is expected that the headline is presented.",
+                                   type=str,
+                                   required=False)
+        subset_parser.add_argument("--index_offset_field",
+                                   help="Name of field in index file that contains line offsets.", type=str,
+                                   default="file_line_offset",
+                                   required=False)
+        subset_parser.set_defaults(func=call_subset)
 
         subparsers_for_help = {
             'ml_splits': ml_splits,
             'chunking': chunking,
-            'subset': subset
+            'subset': subset_parser
         }
 
         if len(sys.argv) < 2:
@@ -338,7 +373,7 @@ def chunking(data: str, out_dir: str, size: int = None, number_of_chunks: int = 
                     lines_in_dataset += 1
                     pbar.update(f.tell() - pbar.n)
 
-            if index.endswith(".csv"):
+            if index.endswith(".csv") or index.endswith(".tsv"):
                 lines_in_dataset -= 1  # header
 
         else:
@@ -411,10 +446,11 @@ def subset(data: str, out: str, from_line: int, to_line: int, index: str = None,
         if index is not None:
             from_offset = 0
             with open(index) as f_index:
-                reading_csv = index.endswith(".csv")
-                reader = csv.DictReader(f_index) if reading_csv else f_index
+                reading_csv = index.endswith(".csv") or index.endswith(".tsv")
+                reader = csv.DictReader(f_index,
+                                        delimiter="\t" if index.endswith(".tsv") else ",") if reading_csv else f_index
 
-                for i, line in enumerate(reader):
+                for i, line in enumerate(tqdm(reader, total=from_line, desc="Searching offset of first line in index")):
                     if i == from_line:
                         from_offset = int(line[index_offset_field]) if reading_csv else int(line)
                         break
@@ -437,6 +473,59 @@ def call_subset(args: argparse.Namespace):
     """
 
     subset(args.data, args.out, args.from_line, args.to_line, args.index, args.index_offset_field)
+
+
+def make_selective_ml_splits(data: str, out_train: str, out_validation: str, out_test: str, validation: str, test: str,
+                             key: str, data_key: str):
+    """
+    Splitting row datasets into train, validation and test sets. According to given set of ids.
+
+    :param data: Dataset that should be split. It must be .csv,.tsv, or .jsonl.
+    :param out_train: Path where the train subset will be saved.
+    :param out_validation: Path where the validation subset will be saved.
+    :param out_test: Path where the test subset will be saved.
+    :param validation: Path to file with ids of samples that should be in validation set. It must be .csv,.tsv, or .jsonl.
+    :param test: Path to file with ids of samples that should be in test set. It must be .csv,.tsv, or .jsonl.
+    :param key: Name of field that contains sample id in files containing ids that should be selected.
+    :param data_key: Name of field that contains sample id in the original dataset.
+    """
+
+    with (open(data) as f_data, FileReader(validation) as f_val, FileReader(test) as f_test, \
+            open(out_train, "w") as out_train_f, open(out_validation, "w") as out_val_f,
+          open(out_test, "w") as out_test_f):
+
+        # let's select ids and convert them to string as we don't want to distinguish between 1 and "1"
+        # at the same time we want to allow non initeger ids, thus it is better choice to convert them to string
+        # instead of int
+
+        val_ids = set(str(row[key]) for row in f_val)
+        test_ids = set(str(row[key]) for row in f_test)
+
+        with tqdm(total=os.path.getsize(data)) as pbar:
+            while line := f_data.readline():
+                pbar.update(f_data.tell() - pbar.n)
+
+                if data.endswith(".csv") or data.endswith(".tsv"):
+                    row = csv.DictReader([line], delimiter="\t" if data.endswith(".tsv") else ",").__next__()
+                else:
+                    row = json.loads(line)
+
+                if str(row[data_key]) in val_ids:
+                    print(line, end="", file=out_val_f)
+                elif str(row[data_key]) in test_ids:
+                    print(line, end="", file=out_test_f)
+                else:
+                    # everything else is train set
+                    print(line, end="", file=out_train_f)
+
+
+def call_make_selective_ml_splits(args: argparse.Namespace):
+    """
+    Splitting row datasets into train, validation and test sets. According to given set of ids.
+    """
+
+    make_selective_ml_splits(args.data, args.out_train, args.out_validation, args.out_test, args.validation, args.test,
+                             args.key, args.data_key)
 
 
 def main():

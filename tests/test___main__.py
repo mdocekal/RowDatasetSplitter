@@ -8,7 +8,7 @@ import argparse
 import os
 from unittest import TestCase
 
-from rowdatasetsplitter.__main__ import call_subset, call_chunking
+from rowdatasetsplitter.__main__ import call_subset, call_chunking, call_make_selective_ml_splits
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 FIXTURES_DIR = os.path.join(SCRIPT_DIR, "fixtures")
@@ -17,6 +17,8 @@ TMP_DIR = os.path.join(SCRIPT_DIR, "tmp")
 DATASET = os.path.join(FIXTURES_DIR, "dataset.txt")
 DATASET_INDEX = os.path.join(FIXTURES_DIR, "dataset.txt.index")
 DATASET_INDEX_CSV = os.path.join(FIXTURES_DIR, "dataset.txt.index.csv")
+
+RECORD_DATASET = os.path.join(FIXTURES_DIR, "record_dataset.jsonl")
 
 
 class Test(TestCase):
@@ -128,3 +130,30 @@ class Test(TestCase):
         )
 
         self.check_subset(args)
+
+    def check_make_selective_ml_splits(self, args):
+        call_make_selective_ml_splits(args)
+
+        with open(args.out_train, "r") as f, open(os.path.join(FIXTURES_DIR, "train_subset.jsonl"), "r") as f2:
+            self.assertEqual(f.read(), f2.read())
+
+        with open(args.out_validation, "r") as f, open(os.path.join(FIXTURES_DIR, "validation_subset.jsonl"), "r") as f2:
+            self.assertEqual(f.read(), f2.read())
+
+        with open(args.out_test, "r") as f, open(os.path.join(FIXTURES_DIR, "test_subset.jsonl"), "r") as f2:
+            self.assertEqual(f.read(), f2.read())
+
+    def test_call_make_selective_ml_splits(self):
+        args = argparse.Namespace(
+            data=RECORD_DATASET,
+            out_train=os.path.join(TMP_DIR, "train_subset.jsonl"),
+            out_validation=os.path.join(TMP_DIR, "validation_subset.jsonl"),
+            out_test=os.path.join(TMP_DIR, "test_subset.jsonl"),
+            validation=os.path.join(FIXTURES_DIR, "validation_subset.jsonl.csv"),
+            test=os.path.join(FIXTURES_DIR, "test_subset.jsonl.tsv"),
+            key="key",
+            data_key="id"
+        )
+        self.check_make_selective_ml_splits(args)
+
+
