@@ -108,11 +108,11 @@ class ArgumentsManager(object):
                                          required=True)
         selective_ml_splits.add_argument("-v", "--validation",
                                          help="Path to file with ids of samples that should be in validation set. It must be .csv,.tsv, or .jsonl.",
-                                         type=float,
+                                         type=str,
                                          required=True)
         selective_ml_splits.add_argument("-s", "--test",
                                          help="Path to file with ids of samples that should be in test set. It must be .csv,.tsv, or .jsonl.",
-                                         type=float,
+                                         type=str,
                                          required=True)
         selective_ml_splits.add_argument("-k", "--key",
                                          help="Name of field that contains sample id in files containing ids that should be selected.",
