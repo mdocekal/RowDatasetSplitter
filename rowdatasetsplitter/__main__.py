@@ -172,10 +172,32 @@ class ArgumentsManager(object):
                                    required=False)
         subset_parser.set_defaults(func=call_subset)
 
+        sample_parser = subparsers.add_parser("sample",
+                                              help="Creates a sample of given dataset. The result is written to the stdout.")
+        sample_parser.add_argument("data", help="Dataset that should be used for sample.", type=str)
+        sample_parser.add_argument("-s", "--size",
+                                   help="Size of the sample in lines or size of in percents. Float number in (0,1).",
+                                   type=float, required=True)
+        sample_parser.add_argument("--fixed_seed", help="Fixes random seed. Useful when you want same splits.",
+                                   action='store_true')
+        sample_parser.add_argument("-i", "--index",
+                                   help="Path to file with line file offsets. It can speed up the process in case when the size number of lines instead of proportion as it will use the index to count lines. "
+                                        "Must be a file with offsets on separate lines or a csv/tsv file. In case of csv/tsv file do not forget to setup index_offset_field. It is expected that the headline is presented.",
+                                   type=str,
+                                   required=False)
+
+        sample_parser.add_argument("--index_offset_field",
+                                   help="Name of field in index file that contains line offsets.", type=str,
+                                   default="file_line_offset",
+                                   required=False)
+        sample_parser.set_defaults(func=call_sample)
+
         subparsers_for_help = {
             'ml_splits': ml_splits,
             'chunking': chunking,
-            'subset': subset_parser
+            'subset': subset_parser,
+            'selective_ml_splits': selective_ml_splits,
+            'sample': sample_parser
         }
 
         if len(sys.argv) < 2:
@@ -491,7 +513,7 @@ def make_selective_ml_splits(data: str, out_train: str, out_validation: str, out
     """
 
     with (open(data) as f_data, FileReader(validation) as f_val, FileReader(test) as f_test, \
-            open(out_train, "w") as out_train_f, open(out_validation, "w") as out_val_f,
+          open(out_train, "w") as out_train_f, open(out_validation, "w") as out_val_f,
           open(out_test, "w") as out_test_f):
 
         # let's select ids and convert them to string as we don't want to distinguish between 1 and "1"
@@ -526,6 +548,96 @@ def call_make_selective_ml_splits(args: argparse.Namespace):
 
     make_selective_ml_splits(args.data, args.out_train, args.out_validation, args.out_test, args.validation, args.test,
                              args.key, args.data_key)
+
+
+def obtain_line_offsets(file_path: str) -> list[int]:
+    """
+    Obtains line offsets from given file and writes them to the output file.
+
+    :param file_path: Path to the file.
+    """
+
+    line_offsets = []
+    with open(file_path, "rb") as f:
+        with tqdm(total=os.path.getsize(file_path)) as pbar:
+            while f.readline():
+                line_offsets.append(pbar.n)
+                pbar.update(f.tell() - pbar.n)
+
+    return line_offsets
+
+
+def line_offsets_from_index(index: str, index_offset_field: str, force_csv: bool = False) -> list[int]:
+    """
+    Obtains line offsets from given index file.
+
+    :param index: Path to file with line file offsets. It can speed up the process. Must be a file with offsets on
+        separate lines or a csv file. It is expected that the headline is presented.
+    :param index_offset_field: Name of field in index file that contains line offsets.
+    :param force_csv: Forces the index to be treated as csv file.
+    """
+
+    line_offsets = []
+    with open(index) as f:
+        if force_csv or index.endswith(".csv") or index.endswith(".tsv"):
+            if not (index.endswith(".csv") or index.endswith(".tsv")):
+                # look at header to determine delimiter
+                header = f.readline()
+                delimiter = "\t" if "\t" in header else ","
+                f.seek(0)
+            else:
+                delimiter = "\t" if index.endswith(".tsv") else ","
+            reader = csv.DictReader(f, delimiter=delimiter)
+            for row in tqdm(reader, desc="Obtaining line offsets from index"):
+                line_offsets.append(int(row[index_offset_field]))
+        else:
+            try:
+                for line in tqdm(f, desc="Obtaining line offsets from index"):
+                    line_offsets.append(int(line))
+            except ValueError:
+                return line_offsets_from_index(index, index_offset_field, True)
+
+    return line_offsets
+
+
+def sample(data: str, size: float, fixed_seed: bool, index: str = None, index_offset_field: str = None):
+    """
+    Creates a sample of given dataset.
+
+    :param data: Dataset that should be used for sample.
+    :param size: Size of the sample in lines or size of in percents. Float number in [0,1).
+    :param fixed_seed: Fixes random seed. Useful when you want same splits.
+    :param index: Path to file with line file offsets. It can speed up the process in case when the size number of lines instead of proportion as it will use the index to count lines.
+        Must be a file with offsets on separate lines or a csv file. In case of csv file do not forget to setup index_offset_field. It is expected that the headline is presented.
+    :param index_offset_field: Name of field in index file that contains line offsets.
+    """
+    assert size > 0, "Size of the sample must be greater than 0."
+    if fixed_seed:
+        random.seed(0)
+
+    if size < 1:
+        with open(data) as f:
+            for line in f:
+                if random.random() < size:
+                    print(line, end="")
+    else:
+        line_offsets = line_offsets_from_index(index, index_offset_field) if index is not None else obtain_line_offsets(data)
+
+        random.shuffle(line_offsets)
+        selected_lines = line_offsets[:int(size)]
+        with open(data) as f:
+            for line_offset in selected_lines:
+                f.seek(line_offset)
+                print(f.readline(), end="")
+
+
+def call_sample(args: argparse.Namespace):
+    """
+    Creates a sample of given dataset.
+
+    :param args: User arguments.
+    """
+    sample(args.data, args.size, args.fixed_seed, args.index, args.index_offset_field)
 
 
 def main():

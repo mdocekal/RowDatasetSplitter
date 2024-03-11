@@ -6,9 +6,11 @@ Created on 20.11.23
 """
 import argparse
 import os
-from unittest import TestCase
+import sys
+from io import StringIO
+from unittest import TestCase, mock
 
-from rowdatasetsplitter.__main__ import call_subset, call_chunking, call_make_selective_ml_splits
+from rowdatasetsplitter.__main__ import call_subset, call_chunking, call_make_selective_ml_splits, call_sample
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 FIXTURES_DIR = os.path.join(SCRIPT_DIR, "fixtures")
@@ -23,11 +25,21 @@ RECORD_DATASET = os.path.join(FIXTURES_DIR, "record_dataset.jsonl")
 
 class Test(TestCase):
 
+    def setUp(self) -> None:
+        self.backup_stdout = sys.stdout
+
     def tearDown(self) -> None:
         # clean tmp dir
         for f in os.listdir(TMP_DIR):
             if f != "placeholder":
                 os.remove(os.path.join(TMP_DIR, f))
+
+        sys.stdout = self.backup_stdout
+
+    def mock_stdout(self):
+        mock_stdout = StringIO()
+        sys.stdout = mock_stdout
+        return mock_stdout
 
     def check_chunking(self, args):
         call_chunking(args)
@@ -137,7 +149,8 @@ class Test(TestCase):
         with open(args.out_train, "r") as f, open(os.path.join(FIXTURES_DIR, "train_subset.jsonl"), "r") as f2:
             self.assertEqual(f.read(), f2.read())
 
-        with open(args.out_validation, "r") as f, open(os.path.join(FIXTURES_DIR, "validation_subset.jsonl"), "r") as f2:
+        with open(args.out_validation, "r") as f, open(os.path.join(FIXTURES_DIR, "validation_subset.jsonl"),
+                                                       "r") as f2:
             self.assertEqual(f.read(), f2.read())
 
         with open(args.out_test, "r") as f, open(os.path.join(FIXTURES_DIR, "test_subset.jsonl"), "r") as f2:
@@ -156,4 +169,58 @@ class Test(TestCase):
         )
         self.check_make_selective_ml_splits(args)
 
+    def test_call_sample(self):
+        args = argparse.Namespace(
+            data=DATASET,
+            size=3,
+            fixed_seed=True,
+            index=None,
+            index_offset_field="file_line_offset"
+        )
+        mock_stdout = self.mock_stdout()
 
+        call_sample(args)
+
+        self.assertEqual(3, sum(len(x) > 0 for x in mock_stdout.getvalue().split("\n")))
+
+    def test_call_sample_with_index(self):
+        args = argparse.Namespace(
+            data=DATASET,
+            size=3,
+            fixed_seed=True,
+            index=DATASET_INDEX,
+            index_offset_field="file_line_offset"
+        )
+        mock_stdout = self.mock_stdout()
+
+        call_sample(args)
+
+        self.assertEqual(3, sum(len(x) > 0 for x in mock_stdout.getvalue().split("\n")))
+
+    @mock.patch("random.random")
+    def test_call_sample_proportion(self, mock_random):
+        args = argparse.Namespace(
+            data=DATASET,
+            size=0.33,
+            fixed_seed=True,
+            index=DATASET_INDEX,
+            index_offset_field="file_line_offset"
+        )
+
+        class MockRandom:
+
+            def __init__(self):
+                self.cnt = -1
+
+            def random(self):
+                self.cnt += 1
+                if self.cnt % 3 == 0:
+                    return 0.0
+                return 1.0
+
+        mock_random.side_effect = MockRandom().random
+        mock_stdout = self.mock_stdout()
+
+        call_sample(args)
+
+        self.assertEqual(3, sum(len(x) > 0 for x in mock_stdout.getvalue().split("\n")))
