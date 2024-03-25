@@ -10,7 +10,8 @@ import sys
 from io import StringIO
 from unittest import TestCase, mock
 
-from rowdatasetsplitter.__main__ import call_subset, call_chunking, call_make_selective_ml_splits, call_sample
+from rowdatasetsplitter.__main__ import call_subset, call_chunking, call_make_selective_ml_splits, call_sample, \
+    call_shuffle
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 FIXTURES_DIR = os.path.join(SCRIPT_DIR, "fixtures")
@@ -224,3 +225,16 @@ class Test(TestCase):
         call_sample(args)
 
         self.assertEqual(3, sum(len(x) > 0 for x in mock_stdout.getvalue().split("\n")))
+
+    def test_call_shuffle(self):
+        args = argparse.Namespace(
+            data=DATASET,
+            fixed_seed=True,
+            index=None,
+            index_offset_field=None
+        )
+        mock_stdout = self.mock_stdout()
+        call_shuffle(args)
+
+        self.assertSequenceEqual(["8", "6", "2", "4", "5", "3", "1", "9", "7"],
+                                 [x for x in mock_stdout.getvalue().split("\n") if len(x)])

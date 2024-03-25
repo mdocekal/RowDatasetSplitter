@@ -192,6 +192,23 @@ class ArgumentsManager(object):
                                    required=False)
         sample_parser.set_defaults(func=call_sample)
 
+        shuffle_parser = subparsers.add_parser("shuffle", help="Shuffles the dataset. The result is written to the stdout.")
+        shuffle_parser.add_argument("data", help="Dataset that should be shuffled.", type=str)
+        shuffle_parser.add_argument("-i", "--index",
+                                   help="Path to file with line file offsets. It can speed up the process in case when the size number of lines instead of proportion as it will use the index to count lines. "
+                                        "Must be a file with offsets on separate lines or a csv/tsv file. In case of csv/tsv file do not forget to setup index_offset_field. It is expected that the headline is presented.",
+                                   type=str,
+                                   required=False)
+
+        shuffle_parser.add_argument("--index_offset_field",
+                                   help="Name of field in index file that contains line offsets.", type=str,
+                                   default="file_line_offset",
+                                   required=False)
+        shuffle_parser.add_argument("--fixed_seed", help="Fixes random seed. Useful when you want same splits.",
+                                      action='store_true')
+        shuffle_parser.set_defaults(func=call_shuffle)
+
+
         subparsers_for_help = {
             'ml_splits': ml_splits,
             'chunking': chunking,
@@ -638,6 +655,37 @@ def call_sample(args: argparse.Namespace):
     :param args: User arguments.
     """
     sample(args.data, args.size, args.fixed_seed, args.index, args.index_offset_field)
+
+
+def shuffle(data: str, index: str = None, index_offset_field: str = None, fixed_seed: bool = True):
+    """
+    Shuffles the dataset.
+
+    :param data: Dataset that should be shuffled.
+    :param index: Path to file with line file offsets. It can speed up the process in case when the size number of lines instead of proportion as it will use the index to count lines.
+        Must be a file with offsets on separate lines or a csv file. In case of csv file do not forget to setup index_offset_field. It is expected that the headline is presented.
+    :param index_offset_field: Name of field in index file that contains line offsets.
+    :param fixed_seed: Fixes random seed. Useful when you want same splits.
+    """
+    if fixed_seed:
+        random.seed(0)
+
+    line_offsets = line_offsets_from_index(index, index_offset_field) if index is not None else obtain_line_offsets(data)
+
+    random.shuffle(line_offsets)
+    with open(data) as f:
+        for line_offset in line_offsets:
+            f.seek(line_offset)
+            print(f.readline(), end="")
+
+
+def call_shuffle(args: argparse.Namespace):
+    """
+    Shuffles the dataset.
+
+    :param args: User arguments.
+    """
+    shuffle(args.data, args.index, args.index_offset_field, args.fixed_seed)
 
 
 def main():
