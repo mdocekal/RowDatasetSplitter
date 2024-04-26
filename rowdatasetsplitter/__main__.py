@@ -148,6 +148,22 @@ class ArgumentsManager(object):
                               required=False)
         chunking.set_defaults(func=call_chunking)
 
+        byte_chunking_parser = subparsers.add_parser("byte_chunking", help="Splitting row datasets into chunks. The chunks are created differently, than with chunks option, as in this case the dataset is split in a way that it tries to achieve the same size of chunks in terms of bytes. Rows are not split.")
+        byte_chunking_parser.add_argument("-d", "--data",
+                              help="Dataset that should be chunked.", type=str,
+                              required=True)
+        byte_chunking_parser.add_argument("--out_dir",
+                              help="Path where the chunks will be saved.", type=str,
+                              required=True)
+        byte_chunking_parser.add_argument("-n", "--number_of_chunks",
+                                    help="Number of chunks.", type=int)
+        byte_chunking_parser.add_argument("--file_name_format",
+                              help="Format of file name for chunks. It must contain {counter} placeholder for chunk number. "
+                                   "Available placeholders are: {orig_basename}, {counter}, {orig_ext}",
+                              type=str,
+                              default="{orig_basename}_{counter}{orig_ext}")
+        byte_chunking_parser.set_defaults(func=call_byte_chunking)
+
         subset_parser = subparsers.add_parser("subset", help="Creates subset of given dataset.")
         subset_parser.add_argument("-d", "--data",
                                    help="Dataset that should be used for subset.", type=str,
@@ -212,9 +228,11 @@ class ArgumentsManager(object):
         subparsers_for_help = {
             'ml_splits': ml_splits,
             'chunking': chunking,
+            'byte_chunking': byte_chunking_parser,
             'subset': subset_parser,
             'selective_ml_splits': selective_ml_splits,
-            'sample': sample_parser
+            'sample': sample_parser,
+            'shuffle': shuffle_parser,
         }
 
         if len(sys.argv) < 2:
@@ -464,6 +482,62 @@ def call_chunking(args: argparse.Namespace):
 
     chunking(args.data, args.out_dir, args.size, args.number_of_chunks, args.file_name_format, args.index)
 
+
+def byte_chunking(data: str, out_dir: str, number_of_chunks: int, file_name_format: str):
+    """
+    Splitting row datasets into chunks. The chunks are created differently, than with chunks option, as in this case the dataset is split in a way that it tries to achieve the same size of chunks in terms of bytes. Rows are not split.
+
+    :param data: Dataset that should be chunked.
+    :param out_dir: Path where the chunks will be saved.
+    :param number_of_chunks: Number of chunks.
+    :param file_name_format: Format of file name for chunks. It must contain {counter} placeholder for chunk number.
+        Available placeholders are: {orig_basename}, {counter}, {orig_ext}
+    """
+
+    with open(data, "rb") as f:
+        data_size = os.path.getsize(data)
+        chunk_size = data_size // number_of_chunks
+
+        counter = 0
+        p = Path(data)
+        orig_basename = p.stem
+        orig_ext = p.suffix
+
+        chunk_file = open(
+            os.path.join(out_dir,
+                         file_name_format.format(orig_basename=orig_basename,
+                                                 counter=counter,
+                                                 orig_ext=orig_ext)
+                         ), "wb"
+        )
+        try:
+            chunk_size_counter = 0
+            for line in f:
+                if chunk_size_counter + len(line) > chunk_size:
+                    chunk_file.close()
+                    counter += 1
+                    chunk_file = open(
+                        os.path.join(out_dir,
+                                     file_name_format.format(orig_basename=orig_basename,
+                                                             counter=counter,
+                                                             orig_ext=orig_ext)
+                                     ), "wb"
+                    )
+                    chunk_size_counter = 0
+
+                chunk_size_counter += len(line)
+                chunk_file.write(line)
+        finally:
+            chunk_file.close()
+
+def call_byte_chunking(args: argparse.Namespace):
+    """
+    Splitting row datasets into chunks. The chunks are created differently, than with chunks option, as in this case the dataset is split in a way that it tries to achieve the same size of chunks in terms of bytes. Rows are not split.
+
+    :param args: User arguments.
+    """
+
+    byte_chunking(args.data, args.out_dir, args.number_of_chunks, args.file_name_format)
 
 def subset(data: str, out: str, from_line: int, to_line: int, index: str = None, index_offset_field: str = None):
     """

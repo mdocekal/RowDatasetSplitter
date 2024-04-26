@@ -11,7 +11,7 @@ from io import StringIO
 from unittest import TestCase, mock
 
 from rowdatasetsplitter.__main__ import call_subset, call_chunking, call_make_selective_ml_splits, call_sample, \
-    call_shuffle
+    call_shuffle, call_byte_chunking
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 FIXTURES_DIR = os.path.join(SCRIPT_DIR, "fixtures")
@@ -21,6 +21,7 @@ DATASET = os.path.join(FIXTURES_DIR, "dataset.txt")
 DATASET_INDEX = os.path.join(FIXTURES_DIR, "dataset.txt.index")
 DATASET_INDEX_CSV = os.path.join(FIXTURES_DIR, "dataset.txt.index.csv")
 
+DATASET_FOR_BYTE_CHUNKS = os.path.join(FIXTURES_DIR, "dataset_for_byte_chunks.txt")
 RECORD_DATASET = os.path.join(FIXTURES_DIR, "record_dataset.jsonl")
 
 
@@ -101,6 +102,22 @@ class Test(TestCase):
         )
 
         self.check_chunking(args)
+
+    def test_call_byte_chunking(self):
+        args = argparse.Namespace(
+            data=DATASET_FOR_BYTE_CHUNKS,
+            out_dir=TMP_DIR,
+            number_of_chunks=3,
+            file_name_format="{orig_basename}_{counter}{orig_ext}"
+        )
+
+        call_byte_chunking(args)
+
+        for chunk in ["dataset_for_byte_chunks_0.txt", "dataset_for_byte_chunks_1.txt", "dataset_for_byte_chunks_2.txt"]:
+            self.assertTrue(os.path.exists(os.path.join(TMP_DIR, chunk)), f"Chunk {chunk} was not created.")
+            with open(os.path.join(TMP_DIR, chunk), "r") as f, open(os.path.join(FIXTURES_DIR, chunk), "r") as f2:
+                self.assertEqual(f.read(), f2.read(), f"Chunk {chunk} does not match.")
+
 
     def check_subset(self, args):
         call_subset(args)
