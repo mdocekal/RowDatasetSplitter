@@ -5,13 +5,14 @@ Created on 20.11.23
 :author:     Martin Dočekal
 """
 import argparse
+import json
 import os
 import sys
 from io import StringIO
 from unittest import TestCase, mock
 
 from rowdatasetsplitter.__main__ import call_subset, call_chunking, call_make_selective_ml_splits, call_sample, \
-    call_shuffle, call_byte_chunking
+    call_shuffle, call_byte_chunking, call_balance
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 FIXTURES_DIR = os.path.join(SCRIPT_DIR, "fixtures")
@@ -23,6 +24,8 @@ DATASET_INDEX_CSV = os.path.join(FIXTURES_DIR, "dataset.txt.index.csv")
 
 DATASET_FOR_BYTE_CHUNKS = os.path.join(FIXTURES_DIR, "dataset_for_byte_chunks.txt")
 RECORD_DATASET = os.path.join(FIXTURES_DIR, "record_dataset.jsonl")
+
+BALANCE_DATASET = os.path.join(FIXTURES_DIR, "balance.jsonl")
 
 
 class Test(TestCase):
@@ -255,3 +258,30 @@ class Test(TestCase):
 
         self.assertSequenceEqual(["8", "6", "2", "4", "5", "3", "1", "9", "7"],
                                  [x for x in mock_stdout.getvalue().split("\n") if len(x)])
+
+    def test_balance(self):
+        args = argparse.Namespace(
+            data=BALANCE_DATASET,
+            field="category",
+            fixed_seed=True
+        )
+
+        mock_stdout = self.mock_stdout()
+        call_balance(args)
+
+        categories_cnt = {
+            "car": 0,
+            "bicycle": 0,
+            "airplane": 0
+        }
+
+        for line in mock_stdout.getvalue().split("\n"):
+            if line:
+                line = json.loads(line)
+                categories_cnt[line["category"]] += 1
+
+        self.assertEqual({
+            "car": 2,
+            "bicycle": 2,
+            "airplane": 2
+        }, categories_cnt)

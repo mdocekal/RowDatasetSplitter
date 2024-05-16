@@ -20,6 +20,7 @@ from argparse import ArgumentParser
 from pathlib import Path
 
 from rowdatasetsplitter.file_reader import FileReader
+from collections import defaultdict
 
 
 class ArgumentParserError(Exception):
@@ -94,7 +95,7 @@ class ArgumentsManager(object):
         selective_ml_splits = subparsers.add_parser("selective_ml_splits",
                                                     help="Splitting row datasets into train, validation and test sets. According to given set of ids.")
         selective_ml_splits.add_argument("-d", "--data",
-                                         help="Dataset that should be split. It must be .csv,.tsv, or .jsonl.",
+                                         help="Dataset that should be split. It must be .jsonl.",
                                          type=str,
                                          required=True)
         selective_ml_splits.add_argument("--out_train",
@@ -148,20 +149,21 @@ class ArgumentsManager(object):
                               required=False)
         chunking.set_defaults(func=call_chunking)
 
-        byte_chunking_parser = subparsers.add_parser("byte_chunking", help="Splitting row datasets into chunks. The chunks are created differently, than with chunks option, as in this case the dataset is split in a way that it tries to achieve the same size of chunks in terms of bytes. Rows are not split.")
+        byte_chunking_parser = subparsers.add_parser("byte_chunking",
+                                                     help="Splitting row datasets into chunks. The chunks are created differently, than with chunks option, as in this case the dataset is split in a way that it tries to achieve the same size of chunks in terms of bytes. Rows are not split.")
         byte_chunking_parser.add_argument("-d", "--data",
-                              help="Dataset that should be chunked.", type=str,
-                              required=True)
+                                          help="Dataset that should be chunked.", type=str,
+                                          required=True)
         byte_chunking_parser.add_argument("--out_dir",
-                              help="Path where the chunks will be saved.", type=str,
-                              required=True)
+                                          help="Path where the chunks will be saved.", type=str,
+                                          required=True)
         byte_chunking_parser.add_argument("-n", "--number_of_chunks",
-                                    help="Number of chunks.", type=int)
+                                          help="Number of chunks.", type=int)
         byte_chunking_parser.add_argument("--file_name_format",
-                              help="Format of file name for chunks. It must contain {counter} placeholder for chunk number. "
-                                   "Available placeholders are: {orig_basename}, {counter}, {orig_ext}",
-                              type=str,
-                              default="{orig_basename}_{counter}{orig_ext}")
+                                          help="Format of file name for chunks. It must contain {counter} placeholder for chunk number. "
+                                               "Available placeholders are: {orig_basename}, {counter}, {orig_ext}",
+                                          type=str,
+                                          default="{orig_basename}_{counter}{orig_ext}")
         byte_chunking_parser.set_defaults(func=call_byte_chunking)
 
         subset_parser = subparsers.add_parser("subset", help="Creates subset of given dataset.")
@@ -208,21 +210,32 @@ class ArgumentsManager(object):
                                    required=False)
         sample_parser.set_defaults(func=call_sample)
 
-        shuffle_parser = subparsers.add_parser("shuffle", help="Shuffles the dataset. The result is written to the stdout.")
+        shuffle_parser = subparsers.add_parser("shuffle",
+                                               help="Shuffles the dataset. The result is written to the stdout.")
         shuffle_parser.add_argument("data", help="Dataset that should be shuffled.", type=str)
         shuffle_parser.add_argument("-i", "--index",
-                                   help="Path to file with line file offsets. It can speed up the process in case when the size number of lines instead of proportion as it will use the index to count lines. "
-                                        "Must be a file with offsets on separate lines or a csv/tsv file. In case of csv/tsv file do not forget to setup index_offset_field. It is expected that the headline is presented.",
-                                   type=str,
-                                   required=False)
+                                    help="Path to file with line file offsets. It can speed up the process in case when the size number of lines instead of proportion as it will use the index to count lines. "
+                                         "Must be a file with offsets on separate lines or a csv/tsv file. In case of csv/tsv file do not forget to setup index_offset_field. It is expected that the headline is presented.",
+                                    type=str,
+                                    required=False)
 
         shuffle_parser.add_argument("--index_offset_field",
-                                   help="Name of field in index file that contains line offsets.", type=str,
-                                   default="file_line_offset",
-                                   required=False)
+                                    help="Name of field in index file that contains line offsets.", type=str,
+                                    default="file_line_offset",
+                                    required=False)
         shuffle_parser.add_argument("--fixed_seed", help="Fixes random seed. Useful when you want same splits.",
-                                      action='store_true')
+                                    action='store_true')
         shuffle_parser.set_defaults(func=call_shuffle)
+
+        balance_parser = subparsers.add_parser("balance",
+                                               help="Balances the dataset. The result is written to the stdout.")
+        balance_parser.add_argument("data", help="Dataset that should be balanced.", type=str)
+        balance_parser.add_argument("-f", "--field",
+                                    help="Field that should be balanced. This scripts expects that the ", type=str,
+                                    required=True)
+        balance_parser.add_argument("--fixed_seed", help="Fixes random seed. Useful when you want make the same balance.",
+                                    action='store_true')
+        balance_parser.set_defaults(func=call_balance)
 
 
         subparsers_for_help = {
@@ -233,6 +246,7 @@ class ArgumentsManager(object):
             'selective_ml_splits': selective_ml_splits,
             'sample': sample_parser,
             'shuffle': shuffle_parser,
+            'balance': balance_parser
         }
 
         if len(sys.argv) < 2:
@@ -496,7 +510,7 @@ def byte_chunking(data: str, out_dir: str, number_of_chunks: int, file_name_form
 
     with open(data, "rb") as f:
         data_size = os.path.getsize(data)
-        chunk_size = data_size // number_of_chunks
+        chunk_size = math.ceil(data_size / number_of_chunks)
 
         counter = 0
         p = Path(data)
@@ -512,8 +526,9 @@ def byte_chunking(data: str, out_dir: str, number_of_chunks: int, file_name_form
         )
         try:
             chunk_size_counter = 0
+
             for line in f:
-                if chunk_size_counter + len(line) > chunk_size:
+                if chunk_size_counter + len(line) > chunk_size and counter < (number_of_chunks - 1):
                     chunk_file.close()
                     counter += 1
                     chunk_file = open(
@@ -530,6 +545,7 @@ def byte_chunking(data: str, out_dir: str, number_of_chunks: int, file_name_form
         finally:
             chunk_file.close()
 
+
 def call_byte_chunking(args: argparse.Namespace):
     """
     Splitting row datasets into chunks. The chunks are created differently, than with chunks option, as in this case the dataset is split in a way that it tries to achieve the same size of chunks in terms of bytes. Rows are not split.
@@ -538,6 +554,7 @@ def call_byte_chunking(args: argparse.Namespace):
     """
 
     byte_chunking(args.data, args.out_dir, args.number_of_chunks, args.file_name_format)
+
 
 def subset(data: str, out: str, from_line: int, to_line: int, index: str = None, index_offset_field: str = None):
     """
@@ -618,10 +635,7 @@ def make_selective_ml_splits(data: str, out_train: str, out_validation: str, out
             while line := f_data.readline():
                 pbar.update(f_data.tell() - pbar.n)
 
-                if data.endswith(".csv") or data.endswith(".tsv"):
-                    row = csv.DictReader([line], delimiter="\t" if data.endswith(".tsv") else ",").__next__()
-                else:
-                    row = json.loads(line)
+                row = json.loads(line)
 
                 if str(row[data_key]) in val_ids:
                     print(line, end="", file=out_val_f)
@@ -712,7 +726,8 @@ def sample(data: str, size: float, fixed_seed: bool, index: str = None, index_of
                 if random.random() < size:
                     print(line, end="")
     else:
-        line_offsets = line_offsets_from_index(index, index_offset_field) if index is not None else obtain_line_offsets(data)
+        line_offsets = line_offsets_from_index(index, index_offset_field) if index is not None else obtain_line_offsets(
+            data)
 
         random.shuffle(line_offsets)
         selected_lines = line_offsets[:int(size)]
@@ -744,7 +759,8 @@ def shuffle(data: str, index: str = None, index_offset_field: str = None, fixed_
     if fixed_seed:
         random.seed(0)
 
-    line_offsets = line_offsets_from_index(index, index_offset_field) if index is not None else obtain_line_offsets(data)
+    line_offsets = line_offsets_from_index(index, index_offset_field) if index is not None else obtain_line_offsets(
+        data)
 
     random.shuffle(line_offsets)
     with open(data) as f:
@@ -760,6 +776,51 @@ def call_shuffle(args: argparse.Namespace):
     :param args: User arguments.
     """
     shuffle(args.data, args.index, args.index_offset_field, args.fixed_seed)
+
+
+def balance(data: str, field: str, fixed_seed: bool = True):
+    """
+    Balances the dataset.
+
+    :param data: Dataset that should be balanced.
+    :param field: Field that should be balanced.
+    :param fixed_seed: Fixes random seed. Useful when you want make the same balance.
+    """
+    if fixed_seed:
+        random.seed(0)
+
+    with open(data) as f:
+        samples_per_category = defaultdict(list)
+
+        file_offset = 0
+        while line := f.readline():
+            row = json.loads(line)
+            samples_per_category[row[field]].append(file_offset)
+            file_offset = f.tell()
+
+        min_samples = min(len(samples) for samples in samples_per_category.values())
+
+        # select min_samples samples from each category and shuffle them
+        # we want to remain the original order of samples
+        allowed_offsets = []
+        for samples in samples_per_category.values():
+            random.shuffle(samples)
+            allowed_offsets.extend(samples[:min_samples])
+
+        allowed_offsets.sort()
+
+        for offset in allowed_offsets:
+            f.seek(offset)
+            print(f.readline(), end="")
+
+
+def call_balance(args: argparse.Namespace):
+    """
+    Balances the dataset.
+
+    :param args: User arguments.
+    """
+    balance(args.data, args.field, args.fixed_seed)
 
 
 def main():
