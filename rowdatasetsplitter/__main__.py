@@ -799,7 +799,7 @@ def balance(data: str, field: str, fixed_seed: bool = True):
             file_offset = f.tell()
 
         print("There are:", file=sys.stderr)
-        for category, samples in sorted(samples_per_category.items(), key=lambda x: len(x[0])):
+        for category, samples in sorted(samples_per_category.items(), key=lambda x: x[0]):
             print(f"\t{category}: {len(samples)}", file=sys.stderr)
 
         min_samples = min(len(samples) for samples in samples_per_category.values())
