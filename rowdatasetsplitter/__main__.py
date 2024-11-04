@@ -59,7 +59,7 @@ class ArgumentsManager(object):
         subparsers = parser.add_subparsers()
 
         ml_splits = subparsers.add_parser("ml_splits",
-                                          help="Splitting row datasets into train, validation and test sets.")
+                                          help="Splitting row datasets into train, validation and test sets. Supports also csv and tsv datasets.")
 
         ml_splits.add_argument("-d", "--data",
                                help="Dataset that should be split.", type=str,
@@ -297,11 +297,22 @@ def row_split(data: str, out_train: str, out_validation: str, out_test: str, val
 
         start_time = time.time()
         i = 0
-        if header and (data.endswith(".csv") or data.endswith(".tsv")):
-            header_line = next(f)
-            print(header_line, end="", file=out_train_f)
-            print(header_line, end="", file=out_val_f)
-            print(header_line, end="", file=out_test_f)
+
+        reader = f
+        csv_writer_train, csv_writer_val, csv_writer_test = None, None, None
+        if data.endswith(".csv") or data.endswith(".tsv"):
+            delimiter = "\t" if data.endswith(".tsv") else ","
+            reader = csv.reader(f, delimiter=delimiter)
+            csv_writer_train = csv.writer(out_train_f, delimiter=delimiter)
+            csv_writer_val = csv.writer(out_val_f, delimiter=delimiter)
+            csv_writer_test = csv.writer(out_test_f, delimiter=delimiter)
+
+            if header:
+                header_line = next(reader)
+
+                csv_writer_train.writerow(header_line)
+                csv_writer_val.writerow(header_line)
+                csv_writer_test.writerow(header_line)
 
         if fast:
             # Performs fast/probabilistic splitting, only one iteration over dataset is needed and is also more memory efficient.
@@ -330,15 +341,24 @@ def row_split(data: str, out_train: str, out_validation: str, out_test: str, val
                 rand_num = random.random()
                 if rand_num < val_rand_threshold:
                     # this part belongs to validation set
-                    print(line, end="", file=out_val_f)
+                    if csv_writer_val is not None:
+                        csv_writer_val.writerow(line)
+                    else:
+                        print(line, end="", file=out_val_f)
                     validation_samples += 1
                 elif rand_num < test_rand_threshold:
                     # this part belongs to validation set
-                    print(line, end="", file=out_test_f)
+                    if csv_writer_test is not None:
+                        csv_writer_test.writerow(line)
+                    else:
+                        print(line, end="", file=out_test_f)
                     test_samples += 1
                 else:
                     # this part belongs to train set
-                    print(line, end="", file=out_train_f)
+                    if csv_writer_train is not None:
+                        csv_writer_train.writerow(line)
+                    else:
+                        print(line, end="", file=out_train_f)
                     train_samples += 1
 
                 if time.time() - start_time > 10:
@@ -395,12 +415,21 @@ def row_split(data: str, out_train: str, out_validation: str, out_test: str, val
 
             for i, line in enumerate(f):
                 if i in validation_indices:
-                    print(line, end="", file=out_val_f)
+                    if csv_writer_val is not None:
+                        csv_writer_val.writerow(line)
+                    else:
+                        print(line, end="", file=out_val_f)
                 elif i in test_indices:
-                    print(line, end="", file=out_test_f)
+                    if csv_writer_test is not None:
+                        csv_writer_test.writerow(line)
+                    else:
+                        print(line, end="", file=out_test_f)
                 else:
                     # everything else is train set
-                    print(line, end="", file=out_train_f)
+                    if csv_writer_train is not None:
+                        csv_writer_train.writerow(line)
+                    else:
+                        print(line, end="", file=out_train_f)
 
                 if time.time() - start_time > 10:
                     start_time = time.time()
