@@ -90,6 +90,7 @@ class ArgumentsManager(object):
                                action='store_true')
         ml_splits.add_argument("--fixedSeed",
                                help="Fixes random seed. Useful when you want same splits.", action='store_true')
+        ml_splits.add_argument("--header", help="If the dataset has a header. Is considered for csv and tsv datasets.", action='store_true')
         ml_splits.set_defaults(func=call_make_ml_splits)
 
         selective_ml_splits = subparsers.add_parser("selective_ml_splits",
@@ -267,7 +268,7 @@ class ArgumentsManager(object):
 
 
 def row_split(data: str, out_train: str, out_validation: str, out_test: str, validation: float, test: float, fast: bool,
-              fixed_seed: bool):
+              fixed_seed: bool, header: bool = False):
     """
     Function for splitting row datasets into train, validation and test sets. The split itself is random, but keep
     in mind that this not changes the order of samples.
@@ -285,6 +286,7 @@ def row_split(data: str, out_train: str, out_validation: str, out_test: str, val
         randomly decide (probability is given according to a subset size) where it goes
         (sample can go only into a one subset).
     :param fixed_seed: Fixes random seed. Useful when you want same splits.
+    :param header: If the dataset has a header. Is considered for csv and tsv datasets.
     """
 
     if fixed_seed:
@@ -295,6 +297,12 @@ def row_split(data: str, out_train: str, out_validation: str, out_test: str, val
 
         start_time = time.time()
         i = 0
+        if header and (data.endswith(".csv") or data.endswith(".tsv")):
+            header_line = next(f)
+            print(header_line, end="", file=out_train_f)
+            print(header_line, end="", file=out_val_f)
+            print(header_line, end="", file=out_test_f)
+
         if fast:
             # Performs fast/probabilistic splitting, only one iteration over dataset is needed and is also more memory efficient.
             # It's rulette wheel selection like approach.
@@ -360,6 +368,9 @@ def row_split(data: str, out_train: str, out_validation: str, out_test: str, val
             line_count = sum(1 for _ in f)
             f.seek(0)
 
+            if header and (data.endswith(".csv") or data.endswith(".tsv")):
+                next(f)  # skip header
+
             logging.info("Number of original dataset samples: {}".format(line_count))
 
             indices = list(range(line_count))
@@ -411,7 +422,7 @@ def call_make_ml_splits(args: argparse.Namespace):
     assert args.test + args.validation < 1
 
     row_split(args.data, args.outTrain, args.outValidation, args.outTest, args.validation, args.test, args.fast,
-              args.fixedSeed)
+              args.fixedSeed, args.header)
 
 
 def chunking(data: str, out_dir: str, size: int = None, number_of_chunks: int = None, file_name_format: str = None,
