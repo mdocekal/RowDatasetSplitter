@@ -385,7 +385,8 @@ def row_split(data: str, out_train: str, out_validation: str, out_test: str, val
             logging.info("Starting slow splitting.")
             logging.info("Line count starts.")
             # Regular splitting, requires two iterations over dataset.
-            line_count = sum(1 for _ in f)
+
+            line_count = sum(1 for _ in reader)
             f.seek(0)
 
             if header and (data.endswith(".csv") or data.endswith(".tsv")):
