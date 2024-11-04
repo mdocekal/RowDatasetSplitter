@@ -337,7 +337,7 @@ def row_split(data: str, out_train: str, out_validation: str, out_test: str, val
             test_samples = 0
 
             logging.info("writing")
-            for i, line in enumerate(f):
+            for i, line in enumerate(reader):
                 rand_num = random.random()
                 if rand_num < val_rand_threshold:
                     # this part belongs to validation set
@@ -413,7 +413,7 @@ def row_split(data: str, out_train: str, out_validation: str, out_test: str, val
 
             logging.info("writing")
 
-            for i, line in enumerate(f):
+            for i, line in enumerate(reader):
                 if i in validation_indices:
                     if csv_writer_val is not None:
                         csv_writer_val.writerow(line)
